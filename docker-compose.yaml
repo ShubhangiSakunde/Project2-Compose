@@ -1,0 +1,52 @@
+services:
+  # Jenkins Docker-in-Docker (DinD) service
+  jenkins-docker:
+    image: docker:dind
+    privileged: true
+    networks:
+      jenkins:
+        aliases:
+          # This allows other services (jenkins-blueocean) on the 'jenkins' network to refer to this service as 'docker
+          - docker 
+    environment:
+      # Sets the directory for Docker TLS certificates
+      - DOCKER_TLS_CERTDIR=/certs  
+    volumes:
+      # Mounts the volume `jenkins-docker-certs` inside the container at /certs/client 
+      - jenkins-docker-certs:/certs/client  
+      # For data persistance it mounts the volume `jenkins-docker-certs` inside the container at /certs/client 
+      - jenkins-data:/var/jenkins_home  
+    ports:
+      # Exposes Docker daemon port
+      - "2376:2376"  
+    command: --storage-driver overlay2  # Uses overlay2 storage driver for better performance
+
+  # Jenkins BlueOcean service
+  jenkins-blueocean:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: myjenkins-blueocean:2.462.2-1 # Custom Jenkins BlueOcean image
+    restart: on-failure # Restarts the container if it fails
+    networks:
+      - jenkins # Connects to the jenkins network
+    environment:
+      - DOCKER_HOST=tcp://docker:2376  # Points to the Docker daemon in jenkins-docker service
+      - DOCKER_CERT_PATH=/certs/client  # Sets the path for Docker client certificates
+      - DOCKER_TLS_VERIFY=1  # Enables TLS verification for Docker
+    ports:
+      - "8080:8080"  # Jenkins web interface
+      - "50000:50000"  # Jenkins agent communication port
+    volumes:
+      - jenkins-data:/var/jenkins_home # Mounts Jenkins data for persistence
+      - jenkins-docker-certs:/certs/client:ro  # Mounts Docker client certificates as read-only
+
+# Creating a custom network for Jenkins services
+# This network will be used by both jenkins-docker and jenkins-blueocean
+networks:
+  jenkins:
+    name: jenkins  
+
+volumes:
+  jenkins-docker-certs:  # This Volume stores Docker client certificates
+  jenkins-data:  # This Volume stores Jenkins data
